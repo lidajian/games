@@ -1,7 +1,7 @@
-# ifndef CONTROL_SOURCE_HPP
-# define CONTROL_SOURCE_HPP
+#ifndef CONTROL_SOURCE_HPP
+#define CONTROL_SOURCE_HPP
 
-# define ATOMIC_RUN(op) lock(); op unlock();
+#define ATOMIC_RUN(op) lock(); op unlock();
 
 #include <atomic>    // atomic_bool
 #include <queue>     // queue
