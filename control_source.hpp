@@ -1,59 +1,14 @@
 #ifndef CONTROL_SOURCE_HPP
 #define CONTROL_SOURCE_HPP
 
-#define ATOMIC_RUN(op) lock(); op unlock();
-
-#include <atomic>    // atomic_bool
-#include <queue>     // queue
 #include <termios.h> // termios, tcsetattr, tcgetattr
 #include <thread>    // thread
 
+#include <boost/lockfree/queue.hpp> // queue
+
 #include "game_board.hpp"
 
-class blocking_queue {
-    public:
-        blocking_queue() {
-            std::atomic_init(&_mutex, false);
-        }
-
-        void put(char c) {
-            ATOMIC_RUN(
-                    q.push(c);
-                    )
-        }
-
-        char get() {
-            ATOMIC_RUN(
-                    char c = q.front();
-                    q.pop();
-                    )
-            return c;
-        }
-
-        bool has_next() {
-            return !q.empty();
-        }
-
-        void clear() {
-            ATOMIC_RUN(
-                    std::queue<char> empty;
-                    empty.swap(q);
-                    )
-        }
-    private:
-        void lock() {
-            static bool _locked = false;
-            while (!_mutex.compare_exchange_weak(_locked, true, std::memory_order_relaxed, std::memory_order_relaxed));
-        }
-
-        void unlock() {
-            static bool _unlocked = true;
-            while (!_mutex.compare_exchange_weak(_unlocked, false, std::memory_order_relaxed, std::memory_order_relaxed));
-        }
-
-        std::atomic_bool _mutex;
-        std::queue<char> q;
-};
+using blocking_queue = boost::lockfree::queue<char>;
 
 class control_source {
     public:
@@ -83,7 +38,7 @@ class unix_keyboard_control_source: public virtual control_source {
 
 class control_source_runner: public blocking_queue {
     public:
-        control_source_runner(control_source* source, board* brd): source(source), thrd(nullptr), brd(brd) {}
+        control_source_runner(control_source* source, board* brd): source(source), thrd(nullptr), brd(brd), blocking_queue(5) {}
 
         void run() {
             thrd = new std::thread(listen, this, source, brd);
@@ -98,7 +53,7 @@ class control_source_runner: public blocking_queue {
         static void listen(blocking_queue* q, const control_source* source, const board* brd) {
             char c;
             while (c = source->get()) {
-                q->put(c);
+                q->push(c);
             }
         }
 

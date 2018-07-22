@@ -41,6 +41,7 @@ int main(int argc, char** argv) {
         std::cout << "Invalid board\n";
         return 1;
     }
+    char c;
     game_board brd(M, N);
     std::unique_ptr<control_source> source(new unix_keyboard_control_source());
     control_source_runner runner(source.get(), &brd);
@@ -54,12 +55,11 @@ int main(int argc, char** argv) {
     do {
         brd.clear();
         brd.init();
-        q.clear();
         do {
             brd.print();
             std::this_thread::sleep_for (std::chrono::milliseconds(brd.get_refresh_rate()));
-            if (q.has_next()) {
-                switch(q.get()) {
+            if (q.pop(c)) {
+                switch(c) {
                     case 'w':
                         [[fallthrough]]
                     case 'i':
