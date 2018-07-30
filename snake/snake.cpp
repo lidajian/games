@@ -1,36 +1,13 @@
-#ifndef GAME_BOARD_HPP
-#define GAME_BOARD_HPP
-
-#include <iostream> // cout
-#include <cstdlib>  // srand, rand
-#include <cstring>  // memset
+#include <chrono>   // seconds
+#include <cstdlib>  // atoi, system, srand, rand
 #include <ctime>    // time
+#include <iostream> // cout
+#include <memory>   // unique_ptr
+#include <thread>   // this_thread
 
-enum direction {
-    LEFT = 0, RIGHT = 3, UP = 1, DOWN = 2
-};
-
-class board {
-    public:
-        board(int M, int N): M(M), N(N), MN(M * N), brd(new int[MN]) {}
-
-        inline void clear() {
-            memset(brd, 0, sizeof(int) * M * N);
-        }
-
-        inline int& at(int i, int j) {
-            return brd[i * N + j];
-        }
-
-        ~board() {
-            delete[] brd;
-        }
-    protected:
-        const int M;
-        const int N;
-        const int MN;
-        int* const brd;
-};
+#include "board.hpp"
+#include "countdown.hpp"
+#include "control_source.hpp"
 
 class game_board: public board {
     public:
@@ -63,11 +40,13 @@ class game_board: public board {
                 next_food_run = rand() % MAX_ADD_FOOD_INTERVAL + 1;
                 has_food = false;
             } else {
-                for (int i = 0; i < MN; i++) {
-                    if (brd[i] > 0) {
-                        brd[i]--;
-                    }
-                }
+                ATOMIC_RUN(
+                        for (int i = 0; i < MN; i++) {
+                            if (brd[i] > 0) {
+                                brd[i]--;
+                            }
+                        }
+                        )
             }
             n = length;
             if (!has_food) {
@@ -75,12 +54,14 @@ class game_board: public board {
                 if (next_food_run < 0) {
                     int food_i = rand() % M;
                     int food_j = rand() % N;
-                    if (at(food_i, food_j) == 0) {
-                        at(food_i, food_j) = -1;
-                        has_food = true;
-                    } else {
-                        next_food_run = 0;
-                    }
+                    ATOMIC_RUN(
+                            if (at(food_i, food_j) == 0) {
+                                at(food_i, food_j) = -1;
+                                has_food = true;
+                            } else {
+                                next_food_run = 0;
+                            }
+                            )
                 }
             }
             return true;
@@ -166,4 +147,69 @@ class game_board: public board {
         bool has_food;
 };
 
-#endif
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        std::cout << "Usage: " << argv[0] << " <M> <N>\n";
+        return 1;
+    }
+    int M = atoi(argv[1]), N = atoi(argv[2]);
+    if (M <= 3 || N <= 3) {
+        std::cout << "Invalid board\n";
+        return 1;
+    }
+    game_board brd(M, N);
+    std::unique_ptr<control_source> source(new unix_keyboard_control_source());
+    control_source_runner runner(source.get(), &brd);
+    runner.run();
+    blocking_queue& q = runner;
+    countdown cdn(3, std::string('\n', M / 2) + std::string("Starting in "), std::string(" seconds\n"));
+    cdn.reset();
+    while(cdn.print()) {
+        std::this_thread::sleep_for (std::chrono::seconds(1));
+    }
+    do {
+        brd.clear();
+        brd.init();
+        q.clear();
+        do {
+            brd.print();
+            std::this_thread::sleep_for (std::chrono::milliseconds(brd.get_refresh_rate()));
+            if (q.has_next()) {
+                switch(q.get()) {
+                    case 'w':
+                        [[fallthrough]]
+                    case 'i':
+                        brd.set_direction(UP);
+                        break;
+                    case 's':
+                        [[fallthrough]]
+                    case 'k':
+                        brd.set_direction(DOWN);
+                        break;
+                    case 'a':
+                        [[fallthrough]]
+                    case 'j':
+                        brd.set_direction(LEFT);
+                        break;
+                    case 'd':
+                        [[fallthrough]]
+                    case 'l':
+                        brd.set_direction(RIGHT);
+                        break;
+                    case ' ':
+                        brd.reset_refresh_rate();
+                        break;
+                    default:
+                        brd.slower();
+                        break;
+                }
+            }
+        } while (brd.next());
+        cdn.reset();
+        while(cdn.print()) {
+            std::this_thread::sleep_for (std::chrono::seconds(1));
+        }
+    } while(1);
+
+    return 0;
+}

@@ -1,20 +1,16 @@
 #ifndef CONTROL_SOURCE_HPP
 #define CONTROL_SOURCE_HPP
 
-#define ATOMIC_RUN(op) lock(); op unlock();
-
-#include <atomic>    // atomic_bool
 #include <queue>     // queue
 #include <termios.h> // termios, tcsetattr, tcgetattr
 #include <thread>    // thread
 
-#include "game_board.hpp"
+#include "board.hpp"
+#include "lockable.hpp"
 
-class blocking_queue {
+class blocking_queue: public lockable {
     public:
-        blocking_queue() {
-            std::atomic_init(&_mutex, false);
-        }
+        blocking_queue() {}
 
         void put(char c) {
             ATOMIC_RUN(
@@ -41,23 +37,12 @@ class blocking_queue {
                     )
         }
     private:
-        void lock() {
-            static bool _locked = false;
-            while (!_mutex.compare_exchange_weak(_locked, true, std::memory_order_relaxed, std::memory_order_relaxed));
-        }
-
-        void unlock() {
-            static bool _unlocked = true;
-            while (!_mutex.compare_exchange_weak(_unlocked, false, std::memory_order_relaxed, std::memory_order_relaxed));
-        }
-
-        std::atomic_bool _mutex;
         std::queue<char> q;
 };
 
 class control_source {
     public:
-        virtual char get() const = 0;
+        virtual char get(board* brd) const = 0;
         virtual ~control_source() {};
 };
 
@@ -69,7 +54,7 @@ class unix_keyboard_control_source: public virtual control_source {
             newt.c_lflag &= ~(ICANON);
         }
 
-        char get() const {
+        char get(board* brd) const {
             tcsetattr(0, TCSANOW, &newt);
             return getchar();
         }
@@ -95,15 +80,15 @@ class control_source_runner: public blocking_queue {
             }
         }
     private:
-        static void listen(blocking_queue* q, const control_source* source, const board* brd) {
+        static void listen(blocking_queue* q, const control_source* source, board* brd) {
             char c;
-            while (c = source->get()) {
+            while (c = source->get(brd)) {
                 q->put(c);
             }
         }
 
         const control_source* source;
-        const board* brd;
+        board* brd;
         std::thread* thrd;
 };
 
