@@ -1,4 +1,4 @@
-#include <chrono>   // seconds
+#include <chrono>   // seconds, milliseconds
 #include <cstdlib>  // atoi, system, srand, rand
 #include <ctime>    // time
 #include <iostream> // cout
@@ -8,23 +8,24 @@
 #include "board.hpp"
 #include "countdown.hpp"
 #include "control_source.hpp"
+#include "direction.hpp"
 
-class game_board: public board {
+class game_board: public board<int> {
     public:
         game_board(int M, int N): board(M, N), refresh_rate(DEFAULT_REFRESH_RATE) {}
 
         bool next() {
             switch(direct) {
-                case UP:
+                case direction_4::UP:
                     head_i--;
                     break;
-                case DOWN:
+                case direction_4::DOWN:
                     head_i++;
                     break;
-                case LEFT:
+                case direction_4::LEFT:
                     head_j--;
                     break;
-                case RIGHT:
+                case direction_4::RIGHT:
                     head_j++;
                     break;
             }
@@ -72,7 +73,7 @@ class game_board: public board {
             int j = N / 2;
             head_i = i;
             head_j = j;
-            direct = UP;
+            direct = direction_4::UP;
             length = INIT_SNAKE_LENGTH;
             srand(time(NULL));
             has_food = false;
@@ -114,10 +115,10 @@ class game_board: public board {
             refresh_rate = DEFAULT_REFRESH_RATE;
         }
 
-        void set_direction(direction direct) {
+        void set_direction(direction_4::Enum direct) {
             if (this->direct == direct) {
                 faster();
-            } else if (this->direct + direct != 3) {
+            } else if (!direction_4::is_opposite(this->direct, direct)) {
                 this->direct = direct;
             } else {
                 slower();
@@ -142,7 +143,7 @@ class game_board: public board {
         int head_i;
         int head_j;
         int length;
-        direction direct;
+        direction_4::Enum direct;
         int next_food_run;
         bool has_food;
 };
@@ -158,10 +159,10 @@ int main(int argc, char** argv) {
         return 1;
     }
     game_board brd(M, N);
-    std::unique_ptr<control_source> source(new unix_keyboard_control_source());
-    control_source_runner runner(source.get(), &brd);
+    std::unique_ptr<control_source<int> > source(new unix_keyboard_control_source<int>());
+    control_source_runner<int, true> runner(source.get(), &brd);
     runner.run();
-    blocking_queue& q = runner;
+    blocking_queue<true>& q = runner;
     countdown cdn(3, std::string('\n', M / 2) + std::string("Starting in "), std::string(" seconds\n"));
     cdn.reset();
     while(cdn.print()) {
@@ -178,23 +179,39 @@ int main(int argc, char** argv) {
                 switch(q.get()) {
                     case 'w':
                         [[fallthrough]]
+#ifdef VIM
+                    case 'k':
+#else
                     case 'i':
-                        brd.set_direction(UP);
+#endif
+                        brd.set_direction(direction_4::UP);
                         break;
                     case 's':
                         [[fallthrough]]
+#ifdef VIM
+                    case 'j':
+#else
                     case 'k':
-                        brd.set_direction(DOWN);
+#endif
+                        brd.set_direction(direction_4::DOWN);
                         break;
                     case 'a':
                         [[fallthrough]]
+#ifdef VIM
+                    case 'h':
+#else
                     case 'j':
-                        brd.set_direction(LEFT);
+#endif
+                        brd.set_direction(direction_4::LEFT);
                         break;
                     case 'd':
                         [[fallthrough]]
+#ifdef VIM
                     case 'l':
-                        brd.set_direction(RIGHT);
+#else
+                    case 'l':
+#endif
+                        brd.set_direction(direction_4::RIGHT);
                         break;
                     case ' ':
                         brd.reset_refresh_rate();

@@ -15,4 +15,6 @@ Left  - <kbd>a</kbd>/<kbd>j</kbd>
 
 Right - <kbd>d</kbd>/<kbd>l</kbd>
 
+Try run with `make vim` if you like *Vim* :laughing:
+
 ![Demo](https://media.giphy.com/media/3PAMPYqY4CY4kk6ccN/giphy.gif)
