@@ -1,5 +1,5 @@
 CC=g++
-FLAGS=-std=c++11 -I../include/
+FLAGS=-std=c++11 -I../include/ -I/usr/local/Cellar/boost/1.67.0_1/include -lboost_thread-mt -lboost_system-mt
 M=20
 N=20
 all: snake snakevim

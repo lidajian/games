@@ -7,8 +7,15 @@
 #include <termios.h> // termios, tcsetattr, tcgetattr
 #include <thread>    // thread, this_thread
 
+#include <boost/asio.hpp>
+
 #include "board.hpp"
 #include "lockable.hpp"
+
+using boost::asio::ip::tcp;
+
+char CHAR_CONT = '\x16';
+char CHAR_EXIT = '\0';
 
 template<bool Is_Lock_Free = true>
 class blocking_queue: public lockable {
@@ -82,7 +89,7 @@ class blocking_queue: public lockable {
 template <typename Board_T>
 class control_source {
     public:
-        virtual char get(board<Board_T>* brd) const = 0;
+        virtual char get(board<Board_T>* brd) = 0;
         virtual ~control_source() {};
 };
 
@@ -95,7 +102,7 @@ class unix_keyboard_control_source: public virtual control_source<Board_T> {
             newt.c_lflag &= ~(ICANON);
         }
 
-        char get(board<Board_T>* brd) const {
+        char get(board<Board_T>* brd) {
             tcsetattr(0, TCSANOW, &newt);
             return getchar();
         }
@@ -105,6 +112,24 @@ class unix_keyboard_control_source: public virtual control_source<Board_T> {
         }
     private:
         struct termios oldt, newt;
+};
+
+template <typename Board_T>
+class remote_control_source: public virtual control_source<Board_T> {
+    public:
+        remote_control_source(const char* host, const char* port): io_context(), s(io_context) {
+            tcp::resolver resolver(io_context);
+            boost::asio::connect(s, resolver.resolve(host, port));
+        }
+
+        ~remote_control_source() {
+            s.close();
+        }
+
+        virtual bool send(char c) = 0;
+    protected:
+        boost::asio::io_context io_context;
+        tcp::socket s;
 };
 
 template <typename Board_T, bool Is_Lock_Free>
@@ -122,14 +147,24 @@ class control_source_runner: public blocking_queue<Is_Lock_Free> {
             }
         }
     private:
-        static void listen(blocking_queue<Is_Lock_Free>* q, const control_source<Board_T>* source, board<Board_T>* brd) {
+        static void listen(blocking_queue<Is_Lock_Free>* q, control_source<Board_T>* source, board<Board_T>* brd) {
             char c;
-            while (c = source->get(brd)) {
-                q->put(c);
+            try {
+                while (c = source->get(brd)) {
+                    if (c == CHAR_EXIT) {
+                        break;
+                    } else if (c == CHAR_CONT) {
+                        continue;
+                    }
+                    q->put(c);
+                }
+            } catch (std::exception& e) {
+                return;
             }
+            q->put(' ');
         }
 
-        const control_source<Board_T>* source;
+        control_source<Board_T>* source;
         board<Board_T>* brd;
         std::thread* thrd;
 };

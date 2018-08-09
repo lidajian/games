@@ -36,7 +36,7 @@ class board: public lockable {
             return N;
         }
 
-        ~board() {
+        virtual ~board() {
             delete[] brd;
         }
     protected:

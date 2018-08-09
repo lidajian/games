@@ -17,53 +17,72 @@ constexpr char CHAR_NONE = ' ';
 constexpr char CHAR_EMPTY = 'O';
 constexpr char CHAR_PLAYER[] = {'@', '*'};
 constexpr char NUM_PLAYER = 2;
-constexpr char INIT_BOARD[M * N + 1] = "            *            "
-                                       "           * *           "
-                                       "          * * *          "
-                                       "         * * * *         "
-                                       "O O O O O O O O O O O O O"
-                                       " O O O O O O O O O O O O "
-                                       "  O O O O O O O O O O O  "
-                                       "   O O O O O O O O O O   "
-                                       "    O O O O O O O O O    "
-                                       "   O O O O O O O O O O   "
-                                       "  O O O O O O O O O O O  "
-                                       " O O O O O O O O O O O O "
-                                       "O O O O O O O O O O O O O"
-                                       "         @ @ @ @         "
-                                       "          @ @ @          "
-                                       "           @ @           "
-                                       "            @            ";
+constexpr char INIT_BOARD[M * N + 1] =
+"            *            "
+"           * *           "
+"          * * *          "
+"         * * * *         "
+"O O O O O O O O O O O O O"
+" O O O O O O O O O O O O "
+"  O O O O O O O O O O O  "
+"   O O O O O O O O O O   "
+"    O O O O O O O O O    "
+"   O O O O O O O O O O   "
+"  O O O O O O O O O O O  "
+" O O O O O O O O O O O O "
+"O O O O O O O O O O O O O"
+"         @ @ @ @         "
+"          @ @ @          "
+"           @ @           "
+"            @            ";
+
+enum status_type {
+    PLAYER_WIN, PLAYER_CHANGE, CONTROL_CONT
+};
 
 class game_board: public board<char> {
     public:
-        game_board(): board(::M, ::N) {}
+        game_board(bool need_swap, int my_player = 0): board(::M, ::N), need_swap(need_swap), my_player(my_player) {}
 
         // next status of board
-        bool next(char c) {
+        status_type next(char c) {
             if (c == 'r') {
                 if (selected) {
                     replay();
                 }
             } else if (c == ' ') {
                 if (selected) {
+                    selected = false;
                     if (!trace.empty()) {
-                        if (check_win()) {
-                            return false;
+                        if (need_swap) {
+                            if (check_win_from_top()) {
+                                return PLAYER_WIN;
+                            }
+                        } else {
+                            if (my_player == current_player) {
+                                if (check_win_from_top()) {
+                                    return PLAYER_WIN;
+                                }
+                            } else {
+                                if (check_win_from_bottom()) {
+                                    return PLAYER_WIN;
+                                }
+                            }
                         }
                         current_player = (current_player + 1) % NUM_PLAYER;
-                        std::reverse(brd, brd + MN);
-                        char char_player = CHAR_PLAYER[current_player];
-                        for (int i = MN - 1; i > 0; i--) {
-                            if (brd[i] == char_player) {
-                                current_i = i / N;
-                                current_j = i % N;
-                                break;
+                        if (need_swap) {
+                            std::reverse(brd, brd + MN);
+                            find_from_bottom();
+                        } else {
+                            if (my_player == current_player) {
+                                find_from_bottom();
+                            } else {
+                                find_from_top();
                             }
                         }
                         trace.clear();
+                        return PLAYER_CHANGE;
                     }
-                    selected = false;
                 } else {
                     selected = true;
                 }
@@ -101,7 +120,7 @@ class game_board: public board<char> {
                         direct = direction_6::LEFT_DOWN;
                         break;
                     default:
-                        return true;
+                        return CONTROL_CONT;
                 }
                 if (selected) {
                     if (trace.size() == 1 &&
@@ -125,17 +144,31 @@ class game_board: public board<char> {
                     move_unselected(direct);
                 }
             }
-            return true;
+            return CONTROL_CONT;
         }
 
         // reset board to initial status
         void init() {
             memcpy(brd, INIT_BOARD, M * N * sizeof(char));
-            current_i = 16;
-            current_j = 12;
             current_player = 0;
+            if (my_player == 0) {
+                find_from_bottom();
+            } else {
+                std::reverse(brd, brd + MN);
+                find_from_top();
+            }
             selected = false;
             trace.clear();
+        }
+
+        // true if trace is empty
+        bool trace_empty() {
+            return trace.empty();
+        }
+
+        // current player
+        int get_current_player() {
+            return current_player;
         }
 
         // print board
@@ -576,11 +609,26 @@ class game_board: public board<char> {
             }
         }
 
-        // check if wins
-        bool check_win() {
+        // check if wins from top
+        bool check_win_from_top() {
             char c = CHAR_PLAYER[current_player];
             for (int i = 0; i < 4; i++) {
-                for (int j = 12 - i; j <= 12 + i; j += 2) {
+                const int max_j = 12 + i;
+                for (int j = 12 - i; j <= max_j; j += 2) {
+                    if (at(i, j) != c) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        // check if wins from bottom
+        bool check_win_from_bottom() {
+            char c = CHAR_PLAYER[current_player];
+            for (int i = M - 4; i < M; i++) {
+                const int max_j = 12 + (M - i - 1);
+                for (int j = 12 - (M - i - 1); j <= max_j; j += 2) {
                     if (at(i, j) != c) {
                         return false;
                     }
@@ -601,6 +649,30 @@ class game_board: public board<char> {
                 }
             }
             return false;
+        }
+
+        // find from top
+        void find_from_top() {
+            char char_player = CHAR_PLAYER[current_player];
+            for (int i = 0; i < MN; i++) {
+                if (brd[i] == char_player) {
+                    current_i = i / N;
+                    current_j = i % N;
+                    break;
+                }
+            }
+        }
+
+        // find from bottom
+        void find_from_bottom() {
+            char char_player = CHAR_PLAYER[current_player];
+            for (int i = MN - 1; i > 0; i--) {
+                if (brd[i] == char_player) {
+                    current_i = i / N;
+                    current_j = i % N;
+                    break;
+                }
+            }
         }
 
         // Current move type
@@ -627,23 +699,121 @@ class game_board: public board<char> {
 
         // previous location in order, used for replay
         std::vector<std::pair<int, int> > trace;
+
+        // true if need swap
+        const bool need_swap;
+
+        // player of board
+        const int my_player;
+};
+
+class cc_remote_control_source: public virtual remote_control_source<char> {
+    public:
+        cc_remote_control_source(const char* host, const char* port): remote_control_source<char>(host, port){}
+
+        char get(board<char>* brd) {
+            constexpr int LENGTH = 1;
+            char write_buffer[] = {'G'};
+            char read_buffer[LENGTH];
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH));
+            size_t read_length = boost::asio::read(s, boost::asio::buffer(read_buffer, LENGTH));
+            if (read_length == 0) {
+                return CHAR_EXIT;
+            }
+            if (read_buffer[0] == ' ') {
+                if (!dynamic_cast<game_board*>(brd)->trace_empty()) {
+                    return CHAR_EXIT;
+                }
+            }
+            return read_buffer[0];
+        }
+
+        bool send(char c) {
+            constexpr int LENGTH = 2;
+            char write_buffer[] = {'P', c};
+            return boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH)) == LENGTH;
+        }
 };
 
 int main(int argc, char** argv) {
-    game_board brd;
-    std::unique_ptr<control_source<char> > source(new unix_keyboard_control_source<char>());
-    control_source_runner<char, false> runner(source.get(), &brd);
-    runner.run();
-    blocking_queue<false>& q = runner;
-    do {
-        brd.init();
-        q.clear();
+    bool client_mode;
+    if (argc == 1) {
+        client_mode = false;
+    } else if (argc == 4) {
+        client_mode = true;
+    } else {
+        std::cerr << "Usage: " << argv[0] << " <host> <port> <player>\n";
+        return 1;
+    }
+    if (client_mode) {
+        char c;
+        int player = atoi(argv[3]);
+        game_board brd(false, player);
+        std::unique_ptr<control_source<char> > source1(new unix_keyboard_control_source<char>());
+        std::unique_ptr<control_source<char> > source2(new cc_remote_control_source(argv[1], argv[2]));
+        control_source_runner<char, false> runner1(source1.get(), &brd);
+        control_source_runner<char, false> runner2(source2.get(), &brd);
+        runner1.run();
+        blocking_queue<false>& q1 = (player == 0 ? runner1 : runner2);
+        blocking_queue<false>& q2 = (player == 0 ? runner2 : runner1);
+        status_type status;
         do {
-            brd.print();
-        } while (brd.next(q.get()));
-        std::cout << "You win! Press any key for another game." << std::endl;
-        q.get();
-    } while(1);
+            brd.init();
+            q1.clear();
+            q2.clear();
+            do {
+                if (player == 1) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                    runner2.run();
+                }
+                do {
+                    brd.print();
+                    c = q1.get();
+                    if (player == 0) {
+                        dynamic_cast<remote_control_source<char>*>(source2.get())->send(c);
+                    }
+                    status = brd.next(c);
+                } while (status == CONTROL_CONT);
+                if (status == PLAYER_CHANGE) {
+                    if (player == 0) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                        runner2.run();
+                    }
+                    do {
+                        brd.print();
+                        c = q2.get();
+                        if (player == 1) {
+                            dynamic_cast<remote_control_source<char>*>(source2.get())->send(c);
+                        }
+                        status = brd.next(c);
+                    } while (status == CONTROL_CONT);
+                }
+            } while (status != PLAYER_WIN);
+            if (player == brd.get_current_player()) {
+                std::cout << "You win! Press any key for another game." << std::endl;
+            } else {
+                std::cout << "You lose! Press any key for another game." << std::endl;
+            }
+            runner1.get();
+        } while(1);
+    } else {
+        game_board brd(true);
+        std::unique_ptr<control_source<char> > source(new unix_keyboard_control_source<char>());
+        control_source_runner<char, false> runner(source.get(), &brd);
+        runner.run();
+        blocking_queue<false>& q = runner;
+        status_type status;
+        do {
+            brd.init();
+            q.clear();
+            do {
+                brd.print();
+            } while ((status = brd.next(q.get())) != PLAYER_WIN);
+            std::cout << "You win! Press any key for another game." << std::endl;
+            q.get();
+        } while(1);
+    }
 
     return 0;
 }
