@@ -4,6 +4,7 @@
 #include <cstring>   // memcpy
 #include <iostream>  // cout
 #include <memory>    // unique_ptr
+#include <string>    // string
 #include <vector>    // vector
 #include <thread>    // this_thread
 
@@ -707,6 +708,11 @@ class game_board: public board<char> {
         const int my_player;
 };
 
+struct login_info {
+    std::string* room_name;
+    int* player;
+};
+
 class cc_remote_control_source: public virtual remote_control_source<char> {
     public:
         cc_remote_control_source(const char* host, const char* port): remote_control_source<char>(host, port){}
@@ -739,11 +745,13 @@ class cc_remote_control_source: public virtual remote_control_source<char> {
         }
 
         bool login(void* payload) {
-            int player = *((int*)payload);
-            constexpr int LENGTH = 2;
-            char write_buffer[] = {commands::IN, (char)player};
+            login_info* info = (login_info*)payload;
+            int player = *(info->player) + 1;
+            std::string* room_name = info->room_name;
+            char write_buffer[] = {commands::IN, (char)player, '\0'};
+            std::string to_write = write_buffer + *room_name;
             char read_buffer[1];
-            size_t write_length = boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH));
+            size_t write_length = boost::asio::write(s, boost::asio::buffer(to_write, to_write.length()));
             if (write_length == 0) {
                 return false;
             }
@@ -765,19 +773,21 @@ int main(int argc, char** argv) {
     bool client_mode;
     if (argc == 1) {
         client_mode = false;
-    } else if (argc == 4) {
+    } else if (argc == 5) {
         client_mode = true;
     } else {
-        std::cerr << "Usage: " << argv[0] << " <host> <port> <player>\n";
+        std::cerr << "Usage: " << argv[0] << " <host> <port> <room> <player>\n";
         return 1;
     }
     if (client_mode) {
         char c;
-        int player = atoi(argv[3]);
+        int player = atoi(argv[4]);
         game_board brd(false, player);
         std::unique_ptr<control_source<char> > source1(new unix_keyboard_control_source<char>());
         std::unique_ptr<control_source<char> > source2(new cc_remote_control_source(argv[1], argv[2]));
-        if (!dynamic_cast<remote_control_source<char>*>(source2.get())->login(&player)) {
+        std::string room_name(argv[3]);
+        login_info info{ &room_name, &player };
+        if (!dynamic_cast<remote_control_source<char>*>(source2.get())->login(&info)) {
             std::cerr << "Login failed! Room/player occupied.\n";
             return 1;
         }

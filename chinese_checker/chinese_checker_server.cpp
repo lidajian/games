@@ -1,7 +1,9 @@
-#include <cstdlib>   // atoi
-#include <exception> // exception
-#include <iostream>  // cout, cerr
-#include <queue>     // queue
+#include <cstdlib>       // atoi
+#include <exception>     // exception
+#include <iostream>      // cout, cerr
+#include <queue>         // queue
+#include <string>        // string
+#include <unordered_map> // unordered_map
 
 #include <boost/asio.hpp>
 
@@ -49,9 +51,44 @@ class room: public blocking_queue<true> {
                 return true;
             }
         }
+
+        bool need_clear() {
+            lock();
+            for (int i = 0; i < NUM_PLAYER; i++) {
+                if (has_player[i]) {
+                    unlock();
+                    return false;
+                }
+            }
+            unlock();
+            return true;
+        }
     private:
         bool has_player[NUM_PLAYER];
-} q;
+};
+
+class room_manager: public lockable {
+    public:
+        room* get(std::string room_name) {
+            lock();
+            if (_m.find(room_name) == _m.end()) {
+                _m.emplace(std::piecewise_construct, std::forward_as_tuple(room_name), std::forward_as_tuple());
+            }
+            room* ret = &_m[room_name];
+            unlock();
+            return ret;
+        }
+
+        void remove(std::string& room_name) {
+            ATOMIC_RUN(
+                    if (_m.find(room_name) != _m.end() && _m[room_name].need_clear()) {
+                        _m.erase(room_name);
+                    }
+                    )
+        }
+    private:
+        std::unordered_map<std::string, room> _m;
+} manager;
 
 class session: public std::enable_shared_from_this<session> {
     public:
@@ -68,15 +105,15 @@ class session: public std::enable_shared_from_this<session> {
                     if (!ec) {
                         if (length == 2 && this->data_[0] == commands::PUT) {
                             if (logged_in) {
-                                q.put(this->data_[1]);
+                                manager.get(room_name)->put(this->data_[1]);
                             }
                             do_read();
                         } else if (length == 1 && this->data_[0] == commands::GET) {
                             if (logged_in) {
-                                if (!q.has_next()) {
+                                if (!manager.get(room_name)->has_next()) {
                                     data_[0] = CHAR_CONT;
                                 } else {
-                                    char c = q.get();
+                                    char c = manager.get(room_name)->get();
                                     if (c >= 'a' && c <= 'z') {
                                         c = KEY_MAP[c - 'a'];
                                     }
@@ -88,8 +125,14 @@ class session: public std::enable_shared_from_this<session> {
                             }
                         } else if (length > 1 && this->data_[0] == commands::IN) {
                             if (!this->logged_in) {
-                                player = (int)this->data_[1];
-                                if (q.player_login(player)) {
+                                player = (int)this->data_[1] - 1;
+                                if (length > MAX_LENGTH) {
+                                    data_[MAX_LENGTH] = '\0';
+                                } else {
+                                    data_[length] = '\0';
+                                }
+                                room_name += (data_ + 2);
+                                if (manager.get(room_name)->player_login(player)) {
                                     this->logged_in = true;
                                     data_[0] = success_fail::SUCCESS;
                                 } else {
@@ -103,7 +146,8 @@ class session: public std::enable_shared_from_this<session> {
                     } else {
                         if (this->logged_in) {
                             this->logged_in = false;
-                            q.player_logout(player);
+                            manager.get(room_name)->player_logout(player);
+                            manager.remove(room_name);
                         }
                     }
                 });
@@ -118,7 +162,8 @@ class session: public std::enable_shared_from_this<session> {
                     } else {
                         if (this->logged_in) {
                             this->logged_in = false;
-                            q.player_logout(player);
+                            manager.get(room_name)->player_logout(player);
+                            manager.remove(room_name);
                         }
                     }
                 });
@@ -127,8 +172,9 @@ class session: public std::enable_shared_from_this<session> {
         tcp::socket socket_;
         bool logged_in;
         int player;
-        static constexpr int MAX_LENGTH = 2;
-        char data_[MAX_LENGTH];
+        std::string room_name;
+        static constexpr int MAX_LENGTH = 256;
+        char data_[MAX_LENGTH + 1];
 };
 
 class server {
