@@ -21,3 +21,5 @@ Right Up        - <kbd>e</kbd>/<kbd>i</kbd>
 Right Down      - <kbd>x</kbd>/<kbd>m</kbd>
 
 Replay moves    - <kbd>r</kbd>
+
+![Demo](https://media.giphy.com/media/m9zcB0C3qmyddWRXfd/giphy.gif)
