@@ -8,6 +8,7 @@
 #include <thread>    // this_thread
 
 #include "board.hpp"
+#include "common.hpp"
 #include "control_source.hpp"
 #include "direction.hpp"
 
@@ -16,7 +17,6 @@ constexpr int N = 25;
 constexpr char CHAR_NONE = ' ';
 constexpr char CHAR_EMPTY = 'O';
 constexpr char CHAR_PLAYER[] = {'@', '*'};
-constexpr char NUM_PLAYER = 2;
 constexpr char INIT_BOARD[M * N + 1] =
 "            *            "
 "           * *           "
@@ -713,10 +713,13 @@ class cc_remote_control_source: public virtual remote_control_source<char> {
 
         char get(board<char>* brd) {
             constexpr int LENGTH = 1;
-            char write_buffer[] = {'G'};
+            char write_buffer[] = {commands::GET};
             char read_buffer[LENGTH];
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
-            boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH));
+            size_t write_length = boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH));
+            if (write_length == 0) {
+                return CHAR_EXIT;
+            }
             size_t read_length = boost::asio::read(s, boost::asio::buffer(read_buffer, LENGTH));
             if (read_length == 0) {
                 return CHAR_EXIT;
@@ -731,8 +734,30 @@ class cc_remote_control_source: public virtual remote_control_source<char> {
 
         bool send(char c) {
             constexpr int LENGTH = 2;
-            char write_buffer[] = {'P', c};
+            char write_buffer[] = {commands::PUT, c};
             return boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH)) == LENGTH;
+        }
+
+        bool login(void* payload) {
+            int player = *((int*)payload);
+            constexpr int LENGTH = 2;
+            char write_buffer[] = {commands::IN, (char)player};
+            char read_buffer[1];
+            size_t write_length = boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH));
+            if (write_length == 0) {
+                return false;
+            }
+            size_t read_length = boost::asio::read(s, boost::asio::buffer(read_buffer, 1));
+            if (read_length == 0) {
+                return false;
+            }
+            return read_buffer[0] == success_fail::SUCCESS;
+        }
+
+        void logout() {
+            constexpr int LENGTH = 1;
+            char write_buffer[] = {commands::OUT};
+            boost::asio::write(s, boost::asio::buffer(write_buffer, LENGTH)) == LENGTH;
         }
 };
 
@@ -752,6 +777,10 @@ int main(int argc, char** argv) {
         game_board brd(false, player);
         std::unique_ptr<control_source<char> > source1(new unix_keyboard_control_source<char>());
         std::unique_ptr<control_source<char> > source2(new cc_remote_control_source(argv[1], argv[2]));
+        if (!dynamic_cast<remote_control_source<char>*>(source2.get())->login(&player)) {
+            std::cerr << "Login failed! Room/player occupied.\n";
+            return 1;
+        }
         control_source_runner<char, false> runner1(source1.get(), &brd);
         control_source_runner<char, false> runner2(source2.get(), &brd);
         runner1.run();
@@ -764,7 +793,6 @@ int main(int argc, char** argv) {
             q2.clear();
             do {
                 if (player == 1) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(200));
                     runner2.run();
                 }
                 do {
@@ -777,7 +805,6 @@ int main(int argc, char** argv) {
                 } while (status == CONTROL_CONT);
                 if (status == PLAYER_CHANGE) {
                     if (player == 0) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(200));
                         runner2.run();
                     }
                     do {

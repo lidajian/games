@@ -127,6 +127,10 @@ class remote_control_source: public virtual control_source<Board_T> {
         }
 
         virtual bool send(char c) = 0;
+
+        virtual bool login(void* payload) = 0;
+
+        virtual void logout() = 0;
     protected:
         boost::asio::io_context io_context;
         tcp::socket s;

@@ -5,17 +5,57 @@
 
 #include <boost/asio.hpp>
 
+#include "common.hpp"
 #include "control_source.hpp"
 
 constexpr char KEY_MAP[] = "dbcazfgknjhluiopqrstmvxwye";
 
 using boost::asio::ip::tcp;
 
-std::queue<char> q;
+class room: public blocking_queue<true> {
+    public:
+        room() {
+            for (int i = 0; i < NUM_PLAYER; i++) {
+                has_player[i] = false;
+            }
+        }
+
+        bool player_login(int i) {
+            if (i < 0 || i >= NUM_PLAYER) {
+                return false;
+            }
+            lock();
+            if (has_player[i]) {
+                unlock();
+                return false;
+            } else {
+                has_player[i] = true;
+                unlock();
+                return true;
+            }
+        }
+
+        bool player_logout(int i) {
+            if (i < 0 || i >= NUM_PLAYER) {
+                return false;
+            }
+            lock();
+            if (!has_player[i]) {
+                unlock();
+                return false;
+            } else {
+                has_player[i] = false;
+                unlock();
+                return true;
+            }
+        }
+    private:
+        bool has_player[NUM_PLAYER];
+} q;
 
 class session: public std::enable_shared_from_this<session> {
     public:
-        session(tcp::socket socket): socket_(std::move(socket)) {}
+        session(tcp::socket socket): socket_(std::move(socket)), logged_in(false) {}
 
         void start() {
             do_read();
@@ -26,21 +66,44 @@ class session: public std::enable_shared_from_this<session> {
             socket_.async_read_some(boost::asio::buffer(data_, MAX_LENGTH),
                 [this, self](boost::system::error_code ec, std::size_t length) {
                     if (!ec) {
-                        if (length == 2 && this->data_[0] == 'P') {
-                            q.push(this->data_[1]);
+                        if (length == 2 && this->data_[0] == commands::PUT) {
+                            if (logged_in) {
+                                q.put(this->data_[1]);
+                            }
                             do_read();
-                        } else if (length == 1 && this->data_[0] == 'G') {
-                            if (q.empty()) {
-                                data_[0] = CHAR_CONT;
-                            } else {
-                                char c = q.front();
-                                if (c >= 'a' && c <= 'z') {
-                                    c = KEY_MAP[c - 'a'];
+                        } else if (length == 1 && this->data_[0] == commands::GET) {
+                            if (logged_in) {
+                                if (!q.has_next()) {
+                                    data_[0] = CHAR_CONT;
+                                } else {
+                                    char c = q.get();
+                                    if (c >= 'a' && c <= 'z') {
+                                        c = KEY_MAP[c - 'a'];
+                                    }
+                                    data_[0] = c;
                                 }
-                                data_[0] = c;
-                                q.pop();
+                                do_write(1);
+                            } else {
+                                do_read();
+                            }
+                        } else if (length > 1 && this->data_[0] == commands::IN) {
+                            if (!this->logged_in) {
+                                player = (int)this->data_[1];
+                                if (q.player_login(player)) {
+                                    this->logged_in = true;
+                                    data_[0] = success_fail::SUCCESS;
+                                } else {
+                                    data_[0] = success_fail::FAIL;
+                                }
+                            } else {
+                                data_[0] = success_fail::FAIL;
                             }
                             do_write(1);
+                        }
+                    } else {
+                        if (this->logged_in) {
+                            this->logged_in = false;
+                            q.player_logout(player);
                         }
                     }
                 });
@@ -52,11 +115,18 @@ class session: public std::enable_shared_from_this<session> {
                 [this, self](boost::system::error_code ec, std::size_t /*length*/) {
                     if (!ec) {
                         do_read();
+                    } else {
+                        if (this->logged_in) {
+                            this->logged_in = false;
+                            q.player_logout(player);
+                        }
                     }
                 });
         }
 
         tcp::socket socket_;
+        bool logged_in;
+        int player;
         static constexpr int MAX_LENGTH = 2;
         char data_[MAX_LENGTH];
 };
