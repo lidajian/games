@@ -3,25 +3,21 @@
 
 #define ATOMIC_RUN(op) lock(); op unlock();
 
-#include <atomic>    // atomic_bool
+#include <atomic>    // atomic_flag
 
 class lockable {
     public:
-        lockable() {
-            std::atomic_init(&_mutex, false);
-        }
+        lockable(): _lock(ATOMIC_FLAG_INIT) {}
 
         void lock() {
-            static bool _locked = false;
-            while (!_mutex.compare_exchange_weak(_locked, true, std::memory_order_relaxed, std::memory_order_relaxed));
+            while (_lock.test_and_set(std::memory_order_acquire));
         }
 
         void unlock() {
-            static bool _unlocked = true;
-            while (!_mutex.compare_exchange_weak(_unlocked, false, std::memory_order_relaxed, std::memory_order_relaxed));
+            _lock.clear(std::memory_order_release);
         }
     private:
-        std::atomic_bool _mutex;
+        std::atomic_flag _lock;
 };
 
 #endif
