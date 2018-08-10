@@ -18,5 +18,6 @@ namespace success_fail {
 };
 
 constexpr char NUM_PLAYER = 2;
+constexpr int MAX_ROOM_NAME_LENGTH = 60;
 
 #endif

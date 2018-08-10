@@ -173,7 +173,7 @@ class session: public std::enable_shared_from_this<session> {
         bool logged_in;
         int player;
         std::string room_name;
-        static constexpr int MAX_LENGTH = 256;
+        static constexpr int MAX_LENGTH = MAX_ROOM_NAME_LENGTH + 2;
         char data_[MAX_LENGTH + 1];
 };
 

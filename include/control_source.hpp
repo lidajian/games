@@ -2,12 +2,14 @@
 #define CONTROL_SOURCE_HPP
 
 #include <condition_variable> // condition_variable
-#include <mutex>     // mutex, unique_lock
-#include <queue>     // queue
-#include <termios.h> // termios, tcsetattr, tcgetattr
-#include <thread>    // thread, this_thread
+#include <exception>          // exception
+#include <mutex>              // mutex, unique_lock
+#include <queue>              // queue
+#include <termios.h>          // termios, tcsetattr, tcgetattr
+#include <thread>             // this_thread
 
 #include <boost/asio.hpp>
+#include <boost/thread.hpp>
 
 #include "board.hpp"
 #include "lockable.hpp"
@@ -16,6 +18,14 @@ using boost::asio::ip::tcp;
 
 char CHAR_CONT = '\x16';
 char CHAR_EXIT = '\0';
+char CHAR_EXCEPTION = '\x19';
+
+class connection_error: public std::exception {
+    public:
+        const char* what() const noexcept {
+            return "Connection lost.";
+        }
+};
 
 template<bool Is_Lock_Free = true>
 class blocking_queue: public lockable {
@@ -47,6 +57,9 @@ class blocking_queue: public lockable {
                     char c = q.front();
                     q.pop();
                     )
+            if (c == CHAR_EXCEPTION) {
+                throw connection_error();
+            }
             return c;
         }
 
@@ -58,6 +71,9 @@ class blocking_queue: public lockable {
             }
             char c = q.front();
             q.pop();
+            if (c == CHAR_EXCEPTION) {
+                throw connection_error();
+            }
             return c;
         }
 
@@ -136,19 +152,18 @@ class remote_control_source: public virtual control_source<Board_T> {
         tcp::socket s;
 };
 
-template <typename Board_T, bool Is_Lock_Free>
+template <typename Board_T, bool Is_Lock_Free, char Char_On_Exit = ' '>
 class control_source_runner: public blocking_queue<Is_Lock_Free> {
     public:
-        control_source_runner(control_source<Board_T>* source, board<Board_T>* brd): source(source), thrd(nullptr), brd(brd) {}
+        control_source_runner(control_source<Board_T>* source, board<Board_T>* brd): source(source), pool(1), brd(brd) {}
 
         void run() {
-            thrd = new std::thread(listen, this, source, brd);
+            boost::asio::post(pool, boost::bind(listen, this, source, brd));
         }
 
         ~control_source_runner() {
-            if (thrd != nullptr) {
-                delete thrd;
-            }
+            pool.stop();
+            pool.join();
         }
     private:
         static void listen(blocking_queue<Is_Lock_Free>* q, control_source<Board_T>* source, board<Board_T>* brd) {
@@ -163,14 +178,15 @@ class control_source_runner: public blocking_queue<Is_Lock_Free> {
                     q->put(c);
                 }
             } catch (std::exception& e) {
+                q->put(CHAR_EXCEPTION);
                 return;
             }
-            q->put(' ');
+            q->put(Char_On_Exit);
         }
 
         control_source<Board_T>* source;
         board<Board_T>* brd;
-        std::thread* thrd;
+        boost::asio::thread_pool pool;
 };
 
 # endif

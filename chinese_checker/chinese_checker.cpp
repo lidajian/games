@@ -782,10 +782,15 @@ int main(int argc, char** argv) {
     if (client_mode) {
         char c;
         int player = atoi(argv[4]);
+        std::string room_name(argv[3]);
+        if (room_name.length() > MAX_ROOM_NAME_LENGTH) {
+            std::cerr << "Room name \"" << room_name << "\" too long.\n"
+                << "Please limit to " << MAX_ROOM_NAME_LENGTH << " characters.\n";
+            return 1;
+        }
         game_board brd(false, player);
         std::unique_ptr<control_source<char> > source1(new unix_keyboard_control_source<char>());
         std::unique_ptr<control_source<char> > source2(new cc_remote_control_source(argv[1], argv[2]));
-        std::string room_name(argv[3]);
         login_info info{ &room_name, &player };
         if (!dynamic_cast<remote_control_source<char>*>(source2.get())->login(&info)) {
             std::cerr << "Login failed! Room/player occupied.\n";
