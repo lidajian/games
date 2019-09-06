@@ -91,32 +91,32 @@ class game_board: public board<char> {
                 direction_6::Enum direct;
                 switch(c) {
                     case 'a':
-                        [[fallthrough]]
+                        [[fallthrough]];
                     case 'h':
                         direct = direction_6::LEFT;
                         break;
                     case 'w':
-                        [[fallthrough]]
+                        [[fallthrough]];
                     case 'u':
                         direct = direction_6::LEFT_UP;
                         break;
                     case 'e':
-                        [[fallthrough]]
+                        [[fallthrough]];
                     case 'i':
                         direct = direction_6::RIGHT_UP;
                         break;
                     case 'd':
-                        [[fallthrough]]
+                        [[fallthrough]];
                     case 'k':
                         direct = direction_6::RIGHT;
                         break;
                     case 'x':
-                        [[fallthrough]]
+                        [[fallthrough]];
                     case 'm':
                         direct = direction_6::RIGHT_DOWN;
                         break;
                     case 'z':
-                        [[fallthrough]]
+                        [[fallthrough]];
                     case 'n':
                         direct = direction_6::LEFT_DOWN;
                         break;

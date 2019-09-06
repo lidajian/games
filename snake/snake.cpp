@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
             if (q.has_next()) {
                 switch(q.get()) {
                     case 'w':
-                        [[fallthrough]]
+                        [[fallthrough]];
 #ifdef VIM
                     case 'k':
 #else
@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
                         brd.set_direction(direction_4::UP);
                         break;
                     case 's':
-                        [[fallthrough]]
+                        [[fallthrough]];
 #ifdef VIM
                     case 'j':
 #else
@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
                         brd.set_direction(direction_4::DOWN);
                         break;
                     case 'a':
-                        [[fallthrough]]
+                        [[fallthrough]];
 #ifdef VIM
                     case 'h':
 #else
@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
                         brd.set_direction(direction_4::LEFT);
                         break;
                     case 'd':
-                        [[fallthrough]]
+                        [[fallthrough]];
 #ifdef VIM
                     case 'l':
 #else
